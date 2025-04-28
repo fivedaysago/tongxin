@@ -3,7 +3,7 @@
 ..\obj\mbotlinuxusart.o: ..\SYSTEM\sys\sys.h
 ..\obj\mbotlinuxusart.o: ..\USER\stm32f10x.h
 ..\obj\mbotlinuxusart.o: ..\CORE\core_cm3.h
-..\obj\mbotlinuxusart.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\mbotlinuxusart.o: E:\keil5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\mbotlinuxusart.o: ..\USER\system_stm32f10x.h
 ..\obj\mbotlinuxusart.o: ..\USER\stm32f10x_conf.h
 ..\obj\mbotlinuxusart.o: ..\STM32F10x_FWLib\inc\stm32f10x_adc.h
@@ -31,4 +31,4 @@
 ..\obj\mbotlinuxusart.o: ..\STM32F10x_FWLib\inc\stm32f10x_wwdg.h
 ..\obj\mbotlinuxusart.o: ..\STM32F10x_FWLib\inc\misc.h
 ..\obj\mbotlinuxusart.o: ..\SYSTEM\usart\usart.h
-..\obj\mbotlinuxusart.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\mbotlinuxusart.o: E:\keil5\ARM\ARMCC\Bin\..\include\stdio.h
