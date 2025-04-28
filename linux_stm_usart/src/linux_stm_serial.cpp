@@ -1,35 +1,37 @@
-#include "mbot_linux_serial.h"
-#include <string>
-#include <unistd.h>
-
-
-using namespace std;
-using namespace boost::asio;
+//包含对应头文件
+#include "linux_stm_serial.h"
+#include <boost/algorithm/string.hpp>
+using namespace std;//设定工作空间的名称
+using namespace boost::asio;//设定工作空间的名称
 //串口相关对象
-boost::system::error_code err;
+//创建一个 io_service实例
 boost::asio::io_service iosev;
-boost::asio::serial_port sp(iosev);
-
+//构造一个串口，将"/dev/ttySUB0"转移给实例iosev
+boost::asio::serial_port sp(iosev, "/dev/ttyUSB0");
+boost::system::error_code err;
 /********************************************************
             串口发送接收相关常量、变量、共用体对象
 ********************************************************/
-const unsigned char ender[2] = {0x0d, 0x0a};
-const unsigned char header[2] = {0x55, 0xaa};
-
+const unsigned char ender[2] = {0x0d, 0x0a};//数据尾
+const unsigned char header[2] = {0x55, 0xaa};//数据头
 //发送左右轮速控制速度共用体
 union sendData
 {
 	short d;
 	unsigned char data[2];
 }leftVelSet,rightVelSet;
-
 //接收数据（左轮速、右轮速、角度）共用体（-32767 - +32768）
 union receiveData
 {
 	short d;
 	unsigned char data[2];
 }leftVelNow,rightVelNow,angleNow;
-
+// 添加位姿数据发送共用体
+union sendPoseData
+{
+    float f;
+    unsigned char data[4];
+}xPose, yPose, yawPose;
 /********************************************************
 函数功能：串口参数初始化
 入口参数：无
@@ -37,21 +39,12 @@ union receiveData
 ********************************************************/
 void serialInit()
 {
-    sp.open("/dev/ttyUSB0", err);
-    if(err){
-        std::cout << "Error: " << err << std::endl;
-        std::cout << "请检查您的串口/dev/ttyUSB0，是否已经准备好：\n 1.读写权限是否打开（默认不打开) \n 2.串口名称是否正确" << std::endl;
-        return ;
-    }
-    sp.set_option(serial_port::baud_rate(115200));
-    sp.set_option(serial_port::flow_control(serial_port::flow_control::none));
-    sp.set_option(serial_port::parity(serial_port::parity::none));
-    sp.set_option(serial_port::stop_bits(serial_port::stop_bits::one));
-    sp.set_option(serial_port::character_size(8));    
-
-    iosev.run();
+    sp.set_option(serial_port::baud_rate(115200));//设置波特率
+    sp.set_option(serial_port::flow_control(serial_port::flow_control::none));//流量控制
+    sp.set_option(serial_port::parity(serial_port::parity::none));//奇偶校验
+    sp.set_option(serial_port::stop_bits(serial_port::stop_bits::one));//停止位
+    sp.set_option(serial_port::character_size(8)); //字符大小
 }
-
 /********************************************************
 函数功能：将对机器人的左右轮子控制速度，打包发送给下位机
 入口参数：机器人线速度、角速度
@@ -88,23 +81,6 @@ void writeSpeed(double Left_v, double Right_v,unsigned char ctrlFlag)
     // 通过串口下发数据
     boost::asio::write(sp, boost::asio::buffer(buf));
 }
-
-std::string string2hex(const std::string& input)
-{
-    static const char* const lut = "0123456789ABCDEF";
-    size_t len = input.length();
-
-    std::string output;
-    output.reserve(2 * len);
-    for (size_t i = 0; i < len; ++i)
-    {
-        const unsigned char c = input[i];
-        output.push_back(lut[c >> 4]);
-        output.push_back(lut[c & 15]);
-    }
-    return output;
-}
-
 /********************************************************
 函数功能：从下位机读取数据
 入口参数：机器人左轮轮速、右轮轮速、角度，预留控制位
@@ -112,47 +88,22 @@ std::string string2hex(const std::string& input)
 ********************************************************/
 bool readSpeed(double &Left_v,double &Right_v,double &Angle,unsigned char &ctrlFlag)
 {
-    char length = 0;
+    char i, length = 0;
     unsigned char checkSum;
-    unsigned char buf[15]={0};
-    bool succeedReadFlag = false;
+    unsigned char buf[150]={0};
     //=========================================================
-    // 此段代码可以读数据的结尾，进而来进行读取数据的头部
+    //此段代码可以读数据的结尾，进而来进行读取数据的头部
     try
     {
-        boost::asio::streambuf response;
-        boost::asio::read_until(sp, response, "\r\n", err);   // 第一次分割数据 根据数据尾"\r\n"
-
-        std::string str;
-        std::istream is(&response);
-        
-        while(response.size() != 0)
-        {
-            std::getline(is, str, (char)header[0]);          // 第二次分割数据 根据数据头 这个会丢 0x55
-            // std::cout <<"筛选前："<<" {"<< string2hex(str) << "} " <<std::endl; 
-            // std::cout << "str size = " << str.size() << std::endl;
-            if(str.size() == 12) 
-            {
-                std::string finalStr(1, header[0]);
-                finalStr = finalStr + str;
-
-                // std::cout <<"筛选后："<<" {"<< string2hex(finalStr) << "} " <<std::endl;   
-                for (size_t i = 0; i < finalStr.size(); i++)
-                {
-                    buf[i] = finalStr[i];
-                }
-                succeedReadFlag = true;
-                break;
-            }
-            else
-            {
-                continue;
-            }
-        }
+        boost::asio::streambuf response; 
+        boost::asio::read_until(sp, response, "\r\n",err);   
+        copy(istream_iterator<unsigned char>(istream(&response)>>noskipws),
+        istream_iterator<unsigned char>(),
+        buf); 
     }  
     catch(boost::system::system_error &err)
     {
-        ROS_ERROR("read_until error");
+        ROS_INFO("read_until error");
     } 
     //=========================================================        
 
@@ -174,7 +125,7 @@ bool readSpeed(double &Left_v,double &Right_v,double &Angle,unsigned char &ctrlF
     }    
 
     // 读取速度值
-    for(int i = 0; i < 2; i++)
+    for(i = 0; i < 2; i++)
     {
         leftVelNow.data[i]  = buf[i + 3]; //buf[3] buf[4]
         rightVelNow.data[i] = buf[i + 5]; //buf[5] buf[6]
@@ -187,7 +138,6 @@ bool readSpeed(double &Left_v,double &Right_v,double &Angle,unsigned char &ctrlF
     Left_v  =leftVelNow.d;
     Right_v =rightVelNow.d;
     Angle   =angleNow.d;
-
     return true;
 }
 /********************************************************
@@ -212,4 +162,46 @@ unsigned char getCrc8(unsigned char *ptr, unsigned short len)
         }
     }
     return crc;
+}
+/********************************************************
+函数功能：将位姿数据打包发送给下位机
+入口参数：x坐标、y坐标、偏航角、控制标志
+出口参数：
+********************************************************/
+void writePose(double x, double y, double yaw, unsigned char ctrlFlag)
+{
+    unsigned char buf[17] = {0};
+    int i, length = 0;
+
+    // 将double转换为float
+    xPose.f = (float)x;
+    yPose.f = (float)y;
+    yawPose.f = (float)yaw;
+
+    // 设置消息头
+    for(i = 0; i < 2; i++)
+        buf[i] = header[i];
+    
+    // 设置数据长度
+    length = 11;
+    buf[2] = length;
+
+    // 设置位姿数据
+    for(i = 0; i < 4; i++)
+    {
+        buf[i + 3] = xPose.data[i];    // x坐标
+        buf[i + 7] = yPose.data[i];    // y坐标
+        buf[i + 11] = yawPose.data[i]; // 偏航角
+    }
+
+    // 设置控制标志
+    buf[3 + length - 1] = ctrlFlag;
+
+    // 设置校验值、消息尾
+    buf[3 + length] = getCrc8(buf, 3 + length);
+    buf[3 + length + 1] = ender[0];
+    buf[3 + length + 2] = ender[1];
+
+    // 通过串口下发数据
+    boost::asio::write(sp, boost::asio::buffer(buf));
 }
